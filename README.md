@@ -60,14 +60,14 @@ Before writing any backup file, the script checks available disk space on each e
 Deploy the script on **all** database nodes. Only the primary node will execute the backup tasks.
 
 ### 3.1 Download and Setup
-1. Upload `illumio_backup.sh` to `/usr/local/bin/`.
+1. Upload `illumio-backup.sh` to `/usr/local/bin/`.
 2. Apply execution permissions:
    ```bash
-   chmod +x /usr/local/bin/illumio_backup.sh
+   chmod +x /usr/local/bin/illumio-backup.sh
    ```
 
 ### 3.2 Configuration Variables
-Open `illumio_backup.sh` and adjust the defaults in the `[SCRIPT CONFIGURATION]` section:
+Open `illumio-backup.sh` and adjust the defaults in the `[SCRIPT CONFIGURATION]` section:
 
 ```bash
 # 1. Local Backup Settings
@@ -182,19 +182,19 @@ Disk Space Threshold:
 
 ```bash
 # Local backup only
-/usr/local/bin/illumio_backup.sh --local
+/usr/local/bin/illumio-backup.sh --local
 
 # SMB only (no local copy retained)
-/usr/local/bin/illumio_backup.sh --smb
+/usr/local/bin/illumio-backup.sh --smb
 
 # Local + SCP
-/usr/local/bin/illumio_backup.sh --local --scp
+/usr/local/bin/illumio-backup.sh --local --scp
 
 # SMB + NFS, Policy DB every 3 days, Traffic every 14 days
-/usr/local/bin/illumio_backup.sh --smb --nfs --db-interval 3 --traffic-interval 14
+/usr/local/bin/illumio-backup.sh --smb --nfs --db-interval 3 --traffic-interval 14
 
 # Custom disk thresholds
-/usr/local/bin/illumio_backup.sh --local --smb --min-free-local 20 --min-free-share 50
+/usr/local/bin/illumio-backup.sh --local --smb --min-free-local 20 --min-free-share 50
 ```
 
 ### 5.3 Crontab Setup
@@ -203,10 +203,10 @@ crontab -e
 ```
 ```bash
 # Daily at 2:00 AM — backup to SMB and SCP
-0 2 * * * /usr/local/bin/illumio_backup.sh --smb --scp >/dev/null 2>&1
+0 2 * * * /usr/local/bin/illumio-backup.sh --smb --scp >/dev/null 2>&1
 
 # Daily at 2:00 AM — local + SMB, Traffic every 14 days
-0 2 * * * /usr/local/bin/illumio_backup.sh --local --smb --traffic-interval 14 >/dev/null 2>&1
+0 2 * * * /usr/local/bin/illumio-backup.sh --local --smb --traffic-interval 14 >/dev/null 2>&1
 ```
 
 ---

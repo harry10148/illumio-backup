@@ -3,7 +3,7 @@
 **繁體中文** | [English](README.md)
 
 ## 1. 簡介與使用情境
-此文件旨在說明 `illumio_backup.sh` 備份腳本的運作原理、決策邏輯以及如何自定義修改以符合您的環境。
+此文件旨在說明 `illumio-backup.sh` 備份腳本的運作原理、決策邏輯以及如何自定義修改以符合您的環境。
 
 此腳本可滿足在 Illumio PCE Cluster 架構下：
 - 自動識別主要節點，避免雙重備份
@@ -118,10 +118,10 @@ ERROR: 請至少指定一個備份目的地 (--local / --smb / --nfs / --scp)
    ```
 
 ### 4.4 準備腳本
-1. 上傳腳本至伺服器，例如 `/usr/local/bin/illumio_backup.sh`
+1. 上傳腳本至伺服器，例如 `/usr/local/bin/illumio-backup.sh`
 2. 賦予執行權限：
    ```bash
-   chmod +x /usr/local/bin/illumio_backup.sh
+   chmod +x /usr/local/bin/illumio-backup.sh
    ```
 
 ### 4.5 自定義變數 (Configuration Variables)
@@ -183,19 +183,19 @@ TRAFFIC_INTERVAL=7  # Traffic DB 備份間隔
 
 ```bash
 # 只存本地
-/usr/local/bin/illumio_backup.sh --local
+/usr/local/bin/illumio-backup.sh --local
 
 # 只存 SMB，不保留本地複本
-/usr/local/bin/illumio_backup.sh --smb
+/usr/local/bin/illumio-backup.sh --smb
 
 # 本地 + SCP 雙份
-/usr/local/bin/illumio_backup.sh --local --scp
+/usr/local/bin/illumio-backup.sh --local --scp
 
 # 傳到 SMB + NFS，Policy DB 每 3 天、Traffic 每 14 天
-/usr/local/bin/illumio_backup.sh --smb --nfs --db-interval 3 --traffic-interval 14
+/usr/local/bin/illumio-backup.sh --smb --nfs --db-interval 3 --traffic-interval 14
 
 # 自訂磁碟門檻
-/usr/local/bin/illumio_backup.sh --local --smb --min-free-local 20 --min-free-share 50
+/usr/local/bin/illumio-backup.sh --local --smb --min-free-local 20 --min-free-share 50
 ```
 
 ### 5.3 設定排程 (Crontab)
@@ -204,10 +204,10 @@ crontab -e
 ```
 ```bash
 # 每天凌晨 2 點：備份到 SMB + SCP
-0 2 * * * /usr/local/bin/illumio_backup.sh --smb --scp >/dev/null 2>&1
+0 2 * * * /usr/local/bin/illumio-backup.sh --smb --scp >/dev/null 2>&1
 
 # 每天凌晨 2 點：本地 + SMB，Traffic 每 14 天備份一次
-0 2 * * * /usr/local/bin/illumio_backup.sh --local --smb --traffic-interval 14 >/dev/null 2>&1
+0 2 * * * /usr/local/bin/illumio-backup.sh --local --smb --traffic-interval 14 >/dev/null 2>&1
 ```
 
 ---
