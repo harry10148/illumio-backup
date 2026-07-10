@@ -3,6 +3,9 @@
 # --- Set PATH environment ---
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# 備份檔含機密（runtime_env.yml 有 DB 密碼），預設建立為 owner-only
+umask 077
+
 # ==============================================================================
 # [SCRIPT CONFIGURATION] — 可依環境調整以下預設值
 # ==============================================================================
@@ -480,7 +483,7 @@ fi
 
 log "INFO" "偵測到備份主節點 IP: $LEADER_IP"
 
-if ! /usr/sbin/ip -o addr show 2>/dev/null | grep -Eq "inet ${LEADER_IP}/"; then
+if ! /usr/sbin/ip -o addr show 2>/dev/null | grep -qF "inet ${LEADER_IP}/"; then
     log "INFO" "[ROLE] 本節點非備份主節點 (主節點為 $LEADER_IP)，正常退出"
     exit 0
 else
@@ -569,6 +572,7 @@ DAYS_SINCE_ENV=$(days_since_last_backup_enabled_destinations "runtime_env_*.yml"
 if should_run_backup "Runtime Env" "$DB_INTERVAL" "$DAYS_SINCE_ENV"; then
     if [[ -f /etc/illumio-pce/runtime_env.yml ]]; then
         if cp /etc/illumio-pce/runtime_env.yml "$RUNTIME_FULL_PATH"; then
+            chmod 600 "$RUNTIME_FULL_PATH"
             log "INFO" "Runtime env 備份至 $RUNTIME_FULL_PATH"
             if process_file "$RUNTIME_FULL_PATH"; then
                 # 若本地未啟用，轉送完畢後刪除暫存檔
