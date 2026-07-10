@@ -22,6 +22,9 @@ DR_HOST="172.16.15.131"
 DR_DEST_DIR="/opt/illumio-backup"
 SCP_TIMEOUT=30
 
+# SSH 共用選項：BatchMode 確保金鑰失效時立即失敗，而非停在密碼提示（cron 下會掛死）
+SSH_OPTS=(-o ConnectTimeout=10 -o BatchMode=yes)
+
 # 4. Disk Space Guard (單位: GB)
 #    備份前若目的地可用空間低於門檻，腳本拒絕寫入並中止
 MIN_FREE_GB_LOCAL=5    # 本地備份最低剩餘空間
@@ -238,8 +241,8 @@ check_remote_disk_space() {
     local MIN_GB="$1"
     local FREE_KB
 
-    FREE_KB=$(ssh -o ConnectTimeout=10 "$DR_USER@$DR_HOST" \
-        "df -k $DR_DEST_DIR 2>/dev/null | awk 'NR==2 {print \$4}'" 2>/dev/null)
+    FREE_KB=$(ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" \
+        "df -k '$DR_DEST_DIR' 2>/dev/null | awk 'NR==2 {print \$4}'" 2>/dev/null)
 
     if [[ -z "$FREE_KB" ]]; then
         die "[DISK] 無法取得遠端主機 ${DR_HOST}:${DR_DEST_DIR} 的磁碟資訊"
@@ -300,7 +303,7 @@ remote_days_since_last_backup() {
     local PATTERN="$1"
     local LAST_MTIME
 
-    LAST_MTIME=$(ssh -o ConnectTimeout=10 -o BatchMode=yes "$DR_USER@$DR_HOST" \
+    LAST_MTIME=$(ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" \
         "find '$DR_DEST_DIR' -maxdepth 1 -name '$PATTERN' -printf '%T@\n' 2>/dev/null | sort -n | tail -1" \
         2>/dev/null)
 
@@ -412,8 +415,8 @@ process_file() {
 
     # 3. SCP Transfer — 先確認 SSH 可連線再執行 scp
     if [[ "$ENABLE_SCP" == true ]]; then
-        if ssh -o ConnectTimeout=10 -o BatchMode=yes "$DR_USER@$DR_HOST" "mkdir -p $DR_DEST_DIR" 2>/dev/null; then
-            if scp -o ConnectTimeout="${SCP_TIMEOUT}" -p "$FILE_PATH" "$DR_USER@$DR_HOST:$DR_DEST_DIR/"; then
+        if ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" "mkdir -p '$DR_DEST_DIR'" 2>/dev/null; then
+            if scp -o BatchMode=yes -o ConnectTimeout="${SCP_TIMEOUT}" -p "$FILE_PATH" "$DR_USER@$DR_HOST:$DR_DEST_DIR/"; then
                 log "INFO" "[SCP] Transfer Success: $FILE_NAME"
                 STORED=true
             else
@@ -488,7 +491,7 @@ fi
 
 if [[ "$ENABLE_SCP" == true ]]; then
     # 先確保遠端目錄存在，避免首次部署時 df 對不存在路徑回空字串導致直接中止
-    if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$DR_USER@$DR_HOST" "mkdir -p '$DR_DEST_DIR'" 2>/dev/null; then
+    if ! ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" "mkdir -p '$DR_DEST_DIR'" 2>/dev/null; then
         die "[SCP] 無法在遠端主機 ${DR_HOST} 建立 ${DR_DEST_DIR}，備份中止"
     fi
     check_remote_disk_space "$MIN_FREE_GB_REMOTE"
@@ -655,7 +658,7 @@ fi
 # 4. SCP (Remote) Cleanup
 if [[ "$ENABLE_SCP" == true ]]; then
     log "INFO" "[CLEANUP] 清理遠端主機 ${DR_HOST}:${DR_DEST_DIR}"
-    ssh -o ConnectTimeout=10 -o BatchMode=yes "$DR_USER@$DR_HOST" \
+    ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" \
         "find '$DR_DEST_DIR' -maxdepth 1 -name 'ilo-db-bak-*.dump'        -mtime +${RETENTION_DB_DAYS}      -delete; \
          find '$DR_DEST_DIR' -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz' -mtime +${RETENTION_TRAFFIC_DAYS}  -delete; \
          find '$DR_DEST_DIR' -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +${RETENTION_DB_DAYS}      -delete" \
