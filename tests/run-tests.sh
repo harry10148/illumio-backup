@@ -56,6 +56,13 @@ assert_eq "calendar_days_since 今天任何時刻為 0"          0 "$(calendar_d
 assert_eq "calendar_days_since 昨天 23:00 為 1（跨日即 1 天）" 1 "$(calendar_days_since "$YESTERDAY_LATE")"
 assert_eq "calendar_days_since 8 天前為 8"                8 "$(calendar_days_since "$EIGHT_DAYS_AGO")"
 
+# --- retention 與 interval 一致性驗證 ---
+OUT=$(bash "$SCRIPT" --local --db-interval 10 --retention-db 7 2>&1); RC=$?
+assert_eq       "retention-db < db-interval 應 exit 1" 1 "$RC"
+assert_contains "錯誤訊息說明 retention 不可小於 interval" "不可小於" "$OUT"
+OUT=$(bash "$SCRIPT" --local --traffic-interval 30 2>&1); RC=$?
+assert_eq       "retention-traffic(預設14) < traffic-interval 30 應 exit 1" 1 "$RC"
+
 echo "-----------------------------------------"
 echo "PASS=${PASS} FAIL=${FAIL}"
 [[ "$FAIL" -eq 0 ]]

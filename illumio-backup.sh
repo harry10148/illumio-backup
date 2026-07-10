@@ -140,6 +140,16 @@ if [[ "$ENABLE_LOCAL" == false && "$ENABLE_SMB" == false && \
     exit 1
 fi
 
+# --- 驗證：保留期限不可短於備份間隔，否則清理會在下一份備份產生前刪光舊備份 ---
+if (( RETENTION_DB_DAYS < DB_INTERVAL )); then
+    echo "ERROR: --retention-db (${RETENTION_DB_DAYS}) 不可小於 --db-interval (${DB_INTERVAL})" >&2
+    exit 1
+fi
+if (( RETENTION_TRAFFIC_DAYS < TRAFFIC_INTERVAL )); then
+    echo "ERROR: --retention-traffic (${RETENTION_TRAFFIC_DAYS}) 不可小於 --traffic-interval (${TRAFFIC_INTERVAL})" >&2
+    exit 1
+fi
+
 # ==============================================================================
 # SYSTEM VARIABLES
 # ==============================================================================
