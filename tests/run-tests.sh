@@ -75,6 +75,14 @@ OUT=$(ILLUMIO_BACKUP_CONF="$CONF_TMP" bash "$SCRIPT" --help)
 assert_contains "設定檔可覆寫 DB_INTERVAL（--help 顯示新預設）" "預設: 42" "$OUT"
 rm -f "$CONF_TMP"
 
+# --- verify_copy_size ---
+SIZE_TMP=$(mktemp)
+printf 'hello' > "$SIZE_TMP"   # 5 bytes
+assert_exit "verify_copy_size 大小一致回傳 0" 0 verify_copy_size "$SIZE_TMP" 5 "TEST" "f"
+assert_exit "verify_copy_size 大小不符回傳 1" 1 verify_copy_size "$SIZE_TMP" 4 "TEST" "f"
+assert_exit "verify_copy_size 目的大小為空回傳 1" 1 verify_copy_size "$SIZE_TMP" "" "TEST" "f"
+rm -f "$SIZE_TMP"
+
 echo "-----------------------------------------"
 echo "PASS=${PASS} FAIL=${FAIL}"
 [[ "$FAIL" -eq 0 ]]

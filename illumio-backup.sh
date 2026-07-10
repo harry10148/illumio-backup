@@ -411,6 +411,21 @@ should_run_backup() {
 }
 
 # ------------------------------------------------------------------------------
+# verify_copy_size — 比對來源與目的檔案大小，防止半截檔案被當成有效備份
+#   $1: 本地來源檔路徑  $2: 目的檔大小 (bytes)  $3: 顯示標籤  $4: 檔名
+# ------------------------------------------------------------------------------
+verify_copy_size() {
+    local SRC="$1" DST_SIZE="$2" LABEL="$3" NAME="$4"
+    local SRC_SIZE
+    SRC_SIZE=$(stat -c %s "$SRC" 2>/dev/null)
+    if [[ -z "$DST_SIZE" || "$SRC_SIZE" != "$DST_SIZE" ]]; then
+        log "ERROR" "[$LABEL] 檔案大小驗證失敗 (local=${SRC_SIZE:-?}, dest=${DST_SIZE:-?}): $NAME"
+        return 1
+    fi
+    return 0
+}
+
+# ------------------------------------------------------------------------------
 # process_file — 將備份檔案送往各已啟用的目的地
 #   $1: 完整檔案路徑（已在本地產生的原始備份檔）
 # ------------------------------------------------------------------------------
@@ -427,7 +442,8 @@ process_file() {
     # 1. SMB Transfer
     if [[ "$ENABLE_SMB" == true ]]; then
         if is_smb_ready; then
-            if cp -p "$FILE_PATH" "$SMB_MOUNT_POINT/"; then
+            if cp -p "$FILE_PATH" "$SMB_MOUNT_POINT/" \
+               && verify_copy_size "$FILE_PATH" "$(stat -c %s "$SMB_MOUNT_POINT/$FILE_NAME" 2>/dev/null)" "SMB" "$FILE_NAME"; then
                 log "INFO" "[SMB] Copy Success: $FILE_NAME"
                 STORED=true
             else
@@ -441,7 +457,8 @@ process_file() {
     # 2. NFS Transfer
     if [[ "$ENABLE_NFS" == true ]]; then
         if is_nfs_ready; then
-            if cp -p "$FILE_PATH" "$NFS_MOUNT_POINT/"; then
+            if cp -p "$FILE_PATH" "$NFS_MOUNT_POINT/" \
+               && verify_copy_size "$FILE_PATH" "$(stat -c %s "$NFS_MOUNT_POINT/$FILE_NAME" 2>/dev/null)" "NFS" "$FILE_NAME"; then
                 log "INFO" "[NFS] Copy Success: $FILE_NAME"
                 STORED=true
             else
@@ -455,7 +472,10 @@ process_file() {
     # 3. SCP Transfer — 先確認 SSH 可連線再執行 scp
     if [[ "$ENABLE_SCP" == true ]]; then
         if ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" "mkdir -p '$DR_DEST_DIR'" 2>/dev/null; then
-            if scp -o BatchMode=yes -o ConnectTimeout="${SCP_TIMEOUT}" -p "$FILE_PATH" "$DR_USER@$DR_HOST:$DR_DEST_DIR/"; then
+            if scp -o BatchMode=yes -o ConnectTimeout="${SCP_TIMEOUT}" -p "$FILE_PATH" "$DR_USER@$DR_HOST:$DR_DEST_DIR/" \
+               && verify_copy_size "$FILE_PATH" \
+                    "$(ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" "stat -c %s '$DR_DEST_DIR/$FILE_NAME'" 2>/dev/null)" \
+                    "SCP" "$FILE_NAME"; then
                 log "INFO" "[SCP] Transfer Success: $FILE_NAME"
                 STORED=true
             else
