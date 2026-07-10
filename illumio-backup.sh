@@ -532,9 +532,11 @@ if should_run_backup "Runtime Env" "$DB_INTERVAL" "$DAYS_SINCE_ENV"; then
                 fi
             fi
         else
+            HARD_FAILURE=true
             log "ERROR" "無法複製 runtime_env.yml 到工作目錄"
         fi
     else
+        HARD_FAILURE=true
         log "ERROR" "runtime_env.yml 不存在於 /etc/illumio-pce/runtime_env.yml"
     fi
 fi
@@ -560,9 +562,11 @@ if should_run_backup "Policy DB" "$DB_INTERVAL" "$DAYS_SINCE_DB"; then
                 fi
             fi
         else
+            HARD_FAILURE=true
             log "ERROR" "Policy DB 命令完成，但找不到輸出檔案: $FULL_DB_PATH"
         fi
     else
+        HARD_FAILURE=true
         log "ERROR" "Policy DB 備份命令失敗！"
     fi
 fi
@@ -587,9 +591,11 @@ if should_run_backup "Traffic DB" "$TRAFFIC_INTERVAL" "$DAYS_SINCE_TRAFFIC"; the
                 fi
             fi
         else
+            HARD_FAILURE=true
             log "ERROR" "Traffic DB 命令完成，但找不到輸出檔案: $FULL_TRAFFIC_PATH"
         fi
     else
+        HARD_FAILURE=true
         log "ERROR" "Traffic DB 備份命令失敗！"
     fi
 fi
