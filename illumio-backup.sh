@@ -215,11 +215,11 @@ setup_env() {
 }
 
 is_smb_ready() {
-    [[ -d "$SMB_MOUNT_POINT" ]] && df -T "$SMB_MOUNT_POINT" 2>/dev/null | grep -qE "cifs|smb"
+    [[ -d "$SMB_MOUNT_POINT" ]] && timeout 10 df -T "$SMB_MOUNT_POINT" 2>/dev/null | grep -qE "cifs|smb"
 }
 
 is_nfs_ready() {
-    [[ -d "$NFS_MOUNT_POINT" ]] && df -T "$NFS_MOUNT_POINT" 2>/dev/null | grep -q "nfs"
+    [[ -d "$NFS_MOUNT_POINT" ]] && timeout 10 df -T "$NFS_MOUNT_POINT" 2>/dev/null | grep -q "nfs"
 }
 
 # ------------------------------------------------------------------------------
@@ -234,7 +234,7 @@ check_disk_space() {
     local LABEL="$3"
 
     local FREE_KB
-    FREE_KB=$(df -k "$MOUNT" 2>/dev/null | awk 'NR==2 {print $4}')
+    FREE_KB=$(timeout 10 df -k "$MOUNT" 2>/dev/null | awk 'NR==2 {print $4}')
 
     if [[ -z "$FREE_KB" ]]; then
         log "ERROR" "[DISK] 無法取得 $LABEL ($MOUNT) 的磁碟資訊"
@@ -304,7 +304,7 @@ days_since_last_backup() {
     [[ -d "$SEARCH_DIR" ]] || { echo 9999; return; }
 
     local LAST_FILE
-    LAST_FILE=$(find "$SEARCH_DIR" -maxdepth 1 -name "$PATTERN" -printf '%T@ %p\n' 2>/dev/null \
+    LAST_FILE=$(timeout 15 find "$SEARCH_DIR" -maxdepth 1 -name "$PATTERN" -printf '%T@ %p\n' 2>/dev/null \
         | sort -n | tail -1 | cut -d' ' -f2-)
 
     if [[ -z "$LAST_FILE" ]]; then
@@ -459,6 +459,16 @@ process_file() {
 # ==============================================================================
 if [[ "${ILLUMIO_BACKUP_TEST_MODE:-false}" == "true" ]]; then
     return 0 2>/dev/null || exit 0
+fi
+
+# ==============================================================================
+# CONCURRENCY LOCK — 避免手動執行與 cron 重疊、或長時間 dump 與下一輪排程互撞
+# ==============================================================================
+LOCK_FILE="/var/run/illumio-backup.lock"
+exec 200>"$LOCK_FILE" || { echo "ERROR: 無法建立鎖檔 $LOCK_FILE" >&2; exit 1; }
+if ! flock -n 200; then
+    echo "INFO: 另一個備份程序正在執行中，本次退出" >&2
+    exit 0
 fi
 
 # ==============================================================================
