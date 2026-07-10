@@ -191,6 +191,7 @@ Disk Space Threshold:
   --min-free-remote <GB>   Min free space on remote host (default: 10)
 
 Other:
+  --dry-run                Show what would be done (frequency decisions, files to delete) without executing
   --help, -h               Print usage and exit
 ```
 

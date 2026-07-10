@@ -50,6 +50,7 @@ ENABLE_LOCAL=false
 ENABLE_SMB=false
 ENABLE_NFS=false
 ENABLE_SCP=false
+DRY_RUN=false
 
 # ==============================================================================
 # [OPTIONAL CONFIG FILE] — 存在時覆寫上方預設值，CLI 參數優先權仍最高
@@ -89,6 +90,9 @@ Usage: $(basename "$0") [OPTIONS]
   --min-free-local <GB>    本地最低剩餘空間 (預設: ${MIN_FREE_GB_LOCAL})
   --min-free-share <GB>    Fileshare 最低剩餘空間 (預設: ${MIN_FREE_GB_SHARE})
   --min-free-remote <GB>   遠端主機最低剩餘空間 (預設: ${MIN_FREE_GB_REMOTE})
+
+其他:
+  --dry-run                只顯示將執行的動作（含頻率判斷與將刪除的檔案），不實際執行
 EOF
 }
 
@@ -102,6 +106,7 @@ while [[ "$#" -gt 0 ]]; do
         --smb)     ENABLE_SMB=true ;;
         --nfs)     ENABLE_NFS=true ;;
         --scp)     ENABLE_SCP=true ;;
+        --dry-run) DRY_RUN=true ;;
         --db-interval)
             if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --db-interval 需要一個正整數" >&2
@@ -595,7 +600,9 @@ RUNTIME_FULL_PATH="${WORK_DIR}/${RUNTIME_FILE}"
 # 頻率檢查 (runtime_env 跟隨 DB 間隔)
 DAYS_SINCE_ENV=$(days_since_last_backup_enabled_destinations "runtime_env_*.yml")
 if should_run_backup "Runtime Env" "$DB_INTERVAL" "$DAYS_SINCE_ENV"; then
-    if [[ -f /etc/illumio-pce/runtime_env.yml ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+        log "INFO" "[DRY-RUN] 將備份 runtime_env.yml 至 $RUNTIME_FULL_PATH 並分送各目的地"
+    elif [[ -f /etc/illumio-pce/runtime_env.yml ]]; then
         if cp /etc/illumio-pce/runtime_env.yml "$RUNTIME_FULL_PATH"; then
             chmod 600 "$RUNTIME_FULL_PATH"
             log "INFO" "Runtime env 備份至 $RUNTIME_FULL_PATH"
@@ -630,7 +637,9 @@ if should_run_backup "Policy DB" "$DB_INTERVAL" "$DAYS_SINCE_DB"; then
     # 先寫入 .part 暫存名，成功後原子改名，避免：
     # 1) 失敗殘留的半成品被下次頻率檢查誤判為有效備份
     # 2) 同日重跑直接覆蓋既有備份
-    if sudo -u ilo-pce illumio-pce-db-management dump --file "${FULL_DB_PATH}.part" >> "$LOG_FILE" 2>&1 \
+    if [[ "$DRY_RUN" == true ]]; then
+        log "INFO" "[DRY-RUN] 將執行 Policy DB dump 至 $FULL_DB_PATH 並分送各目的地"
+    elif sudo -u ilo-pce illumio-pce-db-management dump --file "${FULL_DB_PATH}.part" >> "$LOG_FILE" 2>&1 \
        && [[ -f "${FULL_DB_PATH}.part" ]]; then
         mv "${FULL_DB_PATH}.part" "$FULL_DB_PATH"
         log "INFO" "Policy DB 備份成功: $DB_FILE"
@@ -657,7 +666,9 @@ FULL_TRAFFIC_PATH="${WORK_DIR}/${TRAFFIC_FILE}"
 
 DAYS_SINCE_TRAFFIC=$(days_since_last_backup_enabled_destinations "ilo-traffic-bak-*.tar.gz")
 if should_run_backup "Traffic DB" "$TRAFFIC_INTERVAL" "$DAYS_SINCE_TRAFFIC"; then
-    if sudo -u ilo-pce illumio-pce-db-management traffic dump --file "${FULL_TRAFFIC_PATH}.part" >> "$LOG_FILE" 2>&1 \
+    if [[ "$DRY_RUN" == true ]]; then
+        log "INFO" "[DRY-RUN] 將執行 Traffic DB dump 至 $FULL_TRAFFIC_PATH 並分送各目的地"
+    elif sudo -u ilo-pce illumio-pce-db-management traffic dump --file "${FULL_TRAFFIC_PATH}.part" >> "$LOG_FILE" 2>&1 \
        && [[ -f "${FULL_TRAFFIC_PATH}.part" ]]; then
         mv "${FULL_TRAFFIC_PATH}.part" "$FULL_TRAFFIC_PATH"
         log "INFO" "Traffic DB 備份成功: $TRAFFIC_FILE"
@@ -682,8 +693,10 @@ fi
 # ==============================================================================
 
 # Log Cleanup (保留 30 天) — 與備份成敗無關，永遠執行
-log "INFO" "[CLEANUP] 清理舊 log 檔 (保留 30 天)..."
-find "$LOG_DIR" -type f -name 'backup_*.log' -mtime +30 -delete
+if [[ "$DRY_RUN" == false ]]; then
+    log "INFO" "[CLEANUP] 清理舊 log 檔 (保留 30 天)..."
+    find "$LOG_DIR" -type f -name 'backup_*.log' -mtime +30 -delete
+fi
 
 # 若任一任務硬失敗，跳過保留期清理，避免在新備份缺漏的情況下又刪掉舊備份
 if [[ "$HARD_FAILURE" == true ]]; then
@@ -707,11 +720,16 @@ cleanup_dir() {
     fi
 
     log "INFO" "[CLEANUP] 清理 $LABEL: $DIR"
-    find "$DIR" -maxdepth 1 -name 'ilo-db-bak-*.dump'        -mtime +"$RETENTION_DB_DAYS"      -delete
-    find "$DIR" -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz' -mtime +"$RETENTION_TRAFFIC_DAYS"  -delete
-    find "$DIR" -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +"$RETENTION_DB_DAYS"      -delete
-    find "$DIR" -maxdepth 1 -name 'ilo-db-bak-*.dump.part'        -mtime +1 -delete
-    find "$DIR" -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz.part' -mtime +1 -delete
+    local FIND_ACTION="-delete"
+    if [[ "$DRY_RUN" == true ]]; then
+        FIND_ACTION="-print"
+        log "INFO" "[DRY-RUN] 以下為將刪除的檔案（未實際刪除）："
+    fi
+    find "$DIR" -maxdepth 1 -name 'ilo-db-bak-*.dump'        -mtime +"$RETENTION_DB_DAYS"      $FIND_ACTION
+    find "$DIR" -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz' -mtime +"$RETENTION_TRAFFIC_DAYS"  $FIND_ACTION
+    find "$DIR" -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +"$RETENTION_DB_DAYS"      $FIND_ACTION
+    find "$DIR" -maxdepth 1 -name 'ilo-db-bak-*.dump.part'        -mtime +1 $FIND_ACTION
+    find "$DIR" -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz.part' -mtime +1 $FIND_ACTION
 }
 
 # 1. Local Cleanup
@@ -733,12 +751,16 @@ fi
 
 # 4. SCP (Remote) Cleanup
 if [[ "$ENABLE_SCP" == true ]]; then
-    log "INFO" "[CLEANUP] 清理遠端主機 ${DR_HOST}:${DR_DEST_DIR}"
-    ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" \
-        "find '$DR_DEST_DIR' -maxdepth 1 -name 'ilo-db-bak-*.dump'        -mtime +${RETENTION_DB_DAYS}      -delete; \
-         find '$DR_DEST_DIR' -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz' -mtime +${RETENTION_TRAFFIC_DAYS}  -delete; \
-         find '$DR_DEST_DIR' -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +${RETENTION_DB_DAYS}      -delete" \
-    || log "WARN" "[CLEANUP] 遠端清理失敗，請手動確認"
+    if [[ "$DRY_RUN" == true ]]; then
+        log "INFO" "[DRY-RUN] 將清理遠端主機 ${DR_HOST}:${DR_DEST_DIR} 的過期備份（未實際刪除）"
+    else
+        log "INFO" "[CLEANUP] 清理遠端主機 ${DR_HOST}:${DR_DEST_DIR}"
+        ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" \
+            "find '$DR_DEST_DIR' -maxdepth 1 -name 'ilo-db-bak-*.dump'        -mtime +${RETENTION_DB_DAYS}      -delete; \
+             find '$DR_DEST_DIR' -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz' -mtime +${RETENTION_TRAFFIC_DAYS}  -delete; \
+             find '$DR_DEST_DIR' -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +${RETENTION_DB_DAYS}      -delete" \
+        || log "WARN" "[CLEANUP] 遠端清理失敗，請手動確認"
+    fi
 fi
 
 if [[ "$DEST_DEGRADED" == true ]]; then

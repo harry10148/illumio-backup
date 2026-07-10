@@ -194,6 +194,7 @@ RETENTION_DB_DAYS=14
   --min-free-remote <GB>   遠端主機最低剩餘空間（預設: 10）
 
 其他:
+  --dry-run                只顯示將執行的動作與將刪除的檔案，不實際執行
   --help, -h               顯示說明並結束
 ```
 
