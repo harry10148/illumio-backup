@@ -98,6 +98,16 @@ DB_INTERVAL=1        # Policy DB and runtime_env interval
 TRAFFIC_INTERVAL=7   # Traffic DB interval
 ```
 
+Alternatively, create `/etc/illumio-backup.conf` (root:root, mode 600) containing only the variables you want to override, e.g.:
+
+```bash
+DR_HOST="10.0.0.99"
+DR_USER="backup"
+RETENTION_DB_DAYS=14
+```
+
+The config file survives script upgrades. CLI flags still take the highest precedence.
+
 ---
 
 ## 4. Remote Targets Setup (Optional)

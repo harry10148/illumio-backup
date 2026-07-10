@@ -158,6 +158,16 @@ DB_INTERVAL=1       # Policy DB / runtime_env 備份間隔
 TRAFFIC_INTERVAL=7  # Traffic DB 備份間隔
 ```
 
+也可以建立 `/etc/illumio-backup.conf`（root:root、權限 600），只放要覆寫的變數，例如：
+
+```bash
+DR_HOST="10.0.0.99"
+DR_USER="backup"
+RETENTION_DB_DAYS=14
+```
+
+設定檔在腳本升級替換後仍會保留；命令列參數的優先權仍然最高。
+
 ---
 
 ## 5. 執行與參數說明

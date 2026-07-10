@@ -68,6 +68,13 @@ OUT=$(bash "$SCRIPT" --local --db-interval 2>&1); RC=$?
 assert_eq       "--db-interval 缺值應 exit 1"      1 "$RC"
 assert_contains "缺值錯誤訊息為自訂中文訊息"       "需要一個正整數" "$OUT"
 
+# --- 設定檔覆寫 ---
+CONF_TMP=$(mktemp)
+echo 'DB_INTERVAL=42' > "$CONF_TMP"
+OUT=$(ILLUMIO_BACKUP_CONF="$CONF_TMP" bash "$SCRIPT" --help)
+assert_contains "設定檔可覆寫 DB_INTERVAL（--help 顯示新預設）" "預設: 42" "$OUT"
+rm -f "$CONF_TMP"
+
 echo "-----------------------------------------"
 echo "PASS=${PASS} FAIL=${FAIL}"
 [[ "$FAIL" -eq 0 ]]
