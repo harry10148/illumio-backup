@@ -234,16 +234,19 @@ check_disk_space() {
     FREE_KB=$(df -k "$MOUNT" 2>/dev/null | awk 'NR==2 {print $4}')
 
     if [[ -z "$FREE_KB" ]]; then
-        die "[DISK] 無法取得 $LABEL ($MOUNT) 的磁碟資訊，備份中止"
+        log "ERROR" "[DISK] 無法取得 $LABEL ($MOUNT) 的磁碟資訊"
+        return 1
     fi
 
     local FREE_GB=$(( FREE_KB / 1024 / 1024 ))
 
     if [[ "$FREE_GB" -lt "$MIN_GB" ]]; then
-        die "[DISK] $LABEL 剩餘空間不足 (${FREE_GB} GB < 門檻 ${MIN_GB} GB)，備份中止！"
+        log "ERROR" "[DISK] $LABEL 剩餘空間不足 (${FREE_GB} GB < 門檻 ${MIN_GB} GB)"
+        return 1
     fi
 
     log "INFO" "[DISK] $LABEL 剩餘空間充足: ${FREE_GB} GB (門檻: ${MIN_GB} GB)"
+    return 0
 }
 
 # check_remote_disk_space — 透過 SSH 檢查遠端主機剩餘空間
@@ -255,16 +258,19 @@ check_remote_disk_space() {
         "df -k '$DR_DEST_DIR' 2>/dev/null | awk 'NR==2 {print \$4}'" 2>/dev/null)
 
     if [[ -z "$FREE_KB" ]]; then
-        die "[DISK] 無法取得遠端主機 ${DR_HOST}:${DR_DEST_DIR} 的磁碟資訊"
+        log "ERROR" "[DISK] 無法取得遠端主機 ${DR_HOST}:${DR_DEST_DIR} 的磁碟資訊"
+        return 1
     fi
 
     local FREE_GB=$(( FREE_KB / 1024 / 1024 ))
 
     if [[ "$FREE_GB" -lt "$MIN_GB" ]]; then
-        die "[DISK] 遠端主機 ${DR_HOST} 剩餘空間不足 (${FREE_GB} GB < 門檻 ${MIN_GB} GB)，備份中止！"
+        log "ERROR" "[DISK] 遠端主機 ${DR_HOST} 剩餘空間不足 (${FREE_GB} GB < 門檻 ${MIN_GB} GB)"
+        return 1
     fi
 
     log "INFO" "[DISK] 遠端主機 ${DR_HOST} 剩餘空間充足: ${FREE_GB} GB (門檻: ${MIN_GB} GB)"
+    return 0
 }
 
 # ------------------------------------------------------------------------------
@@ -487,24 +493,50 @@ fi
 
 log "INFO" "--- 磁碟空間預先檢查 ---"
 
+# 檢查失敗的目的地降級停用，不中止其他目的地；全滅才中止
+DEST_DEGRADED=false
+
 if [[ "$ENABLE_LOCAL" == true ]]; then
-    check_disk_space "$LOCAL_BACKUP_DIR" "$MIN_FREE_GB_LOCAL" "本地備份目錄"
+    if ! check_disk_space "$LOCAL_BACKUP_DIR" "$MIN_FREE_GB_LOCAL" "本地備份目錄"; then
+        ENABLE_LOCAL=false
+        DEST_DEGRADED=true
+        log "ERROR" "[DEST] 本地備份目的地停用（前置檢查未通過）"
+    fi
 fi
 
 if [[ "$ENABLE_SMB" == true ]] && is_smb_ready; then
-    check_disk_space "$SMB_MOUNT_POINT" "$MIN_FREE_GB_SHARE" "SMB Fileshare"
+    if ! check_disk_space "$SMB_MOUNT_POINT" "$MIN_FREE_GB_SHARE" "SMB Fileshare"; then
+        ENABLE_SMB=false
+        DEST_DEGRADED=true
+        log "ERROR" "[DEST] SMB 目的地停用（前置檢查未通過）"
+    fi
 fi
 
 if [[ "$ENABLE_NFS" == true ]] && is_nfs_ready; then
-    check_disk_space "$NFS_MOUNT_POINT" "$MIN_FREE_GB_SHARE" "NFS Fileshare"
+    if ! check_disk_space "$NFS_MOUNT_POINT" "$MIN_FREE_GB_SHARE" "NFS Fileshare"; then
+        ENABLE_NFS=false
+        DEST_DEGRADED=true
+        log "ERROR" "[DEST] NFS 目的地停用（前置檢查未通過）"
+    fi
 fi
 
 if [[ "$ENABLE_SCP" == true ]]; then
-    # 先確保遠端目錄存在，避免首次部署時 df 對不存在路徑回空字串導致直接中止
+    # 先確保遠端目錄存在，避免首次部署時 df 對不存在路徑回空字串
     if ! ssh "${SSH_OPTS[@]}" "$DR_USER@$DR_HOST" "mkdir -p '$DR_DEST_DIR'" 2>/dev/null; then
-        die "[SCP] 無法在遠端主機 ${DR_HOST} 建立 ${DR_DEST_DIR}，備份中止"
+        ENABLE_SCP=false
+        DEST_DEGRADED=true
+        log "ERROR" "[DEST] SCP 目的地停用（無法在遠端主機 ${DR_HOST} 建立 ${DR_DEST_DIR}）"
+    elif ! check_remote_disk_space "$MIN_FREE_GB_REMOTE"; then
+        ENABLE_SCP=false
+        DEST_DEGRADED=true
+        log "ERROR" "[DEST] SCP 目的地停用（前置檢查未通過）"
     fi
-    check_remote_disk_space "$MIN_FREE_GB_REMOTE"
+fi
+
+# 所有目的地皆失效時沒有任何地方可保存備份，中止
+if [[ "$ENABLE_LOCAL" == false && "$ENABLE_SMB" == false && \
+      "$ENABLE_NFS" == false  && "$ENABLE_SCP" == false ]]; then
+    die "[DEST] 所有備份目的地均未通過前置檢查，備份中止"
 fi
 
 # ==============================================================================
@@ -679,6 +711,12 @@ fi
 # 5. Log Cleanup (保留 30 天)
 log "INFO" "[CLEANUP] 清理舊 log 檔 (保留 30 天)..."
 find "$LOG_DIR" -type f -name 'backup_*.log' -mtime +30 -delete
+
+if [[ "$DEST_DEGRADED" == true ]]; then
+    log "ERROR" "Backup Process Completed With Degraded Destinations."
+    log "ERROR" "========================================="
+    exit 1
+fi
 
 log "INFO" "Backup Process Completed Successfully."
 log "INFO" "========================================="
