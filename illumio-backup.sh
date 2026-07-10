@@ -6,6 +6,10 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # 備份檔含機密（runtime_env.yml 有 DB 密碼），預設建立為 owner-only
 umask 077
 
+# 不加 set -e：本腳本的錯誤處理為逐步手動判斷
+set -u
+set -o pipefail
+
 # ==============================================================================
 # [SCRIPT CONFIGURATION] — 可依環境調整以下預設值
 # ==============================================================================
@@ -88,43 +92,43 @@ while [[ "$#" -gt 0 ]]; do
         --nfs)     ENABLE_NFS=true ;;
         --scp)     ENABLE_SCP=true ;;
         --db-interval)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --db-interval 需要一個正整數" >&2
                 exit 1
             fi
             DB_INTERVAL="$2"; shift ;;
         --traffic-interval)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --traffic-interval 需要一個正整數" >&2
                 exit 1
             fi
             TRAFFIC_INTERVAL="$2"; shift ;;
         --retention-db)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --retention-db 需要一個正整數" >&2
                 exit 1
             fi
             RETENTION_DB_DAYS="$2"; shift ;;
         --retention-traffic)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --retention-traffic 需要一個正整數" >&2
                 exit 1
             fi
             RETENTION_TRAFFIC_DAYS="$2"; shift ;;
         --min-free-local)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --min-free-local 需要一個正整數" >&2
                 exit 1
             fi
             MIN_FREE_GB_LOCAL="$2"; shift ;;
         --min-free-share)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --min-free-share 需要一個正整數" >&2
                 exit 1
             fi
             MIN_FREE_GB_SHARE="$2"; shift ;;
         --min-free-remote)
-            if [[ -z "$2" ]] || ! is_positive_int "$2"; then
+            if [[ -z "${2:-}" ]] || ! is_positive_int "${2:-}"; then
                 echo "ERROR: --min-free-remote 需要一個正整數" >&2
                 exit 1
             fi
@@ -666,6 +670,10 @@ fi
 # PHASE 3: Retention & Cleanup
 # ==============================================================================
 
+# Log Cleanup (保留 30 天) — 與備份成敗無關，永遠執行
+log "INFO" "[CLEANUP] 清理舊 log 檔 (保留 30 天)..."
+find "$LOG_DIR" -type f -name 'backup_*.log' -mtime +30 -delete
+
 # 若任一任務硬失敗，跳過保留期清理，避免在新備份缺漏的情況下又刪掉舊備份
 if [[ "$HARD_FAILURE" == true ]]; then
     log "WARN" "[CLEANUP] 偵測到備份硬失敗，本次跳過保留期清理以保留現有舊備份"
@@ -721,10 +729,6 @@ if [[ "$ENABLE_SCP" == true ]]; then
          find '$DR_DEST_DIR' -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +${RETENTION_DB_DAYS}      -delete" \
     || log "WARN" "[CLEANUP] 遠端清理失敗，請手動確認"
 fi
-
-# 5. Log Cleanup (保留 30 天)
-log "INFO" "[CLEANUP] 清理舊 log 檔 (保留 30 天)..."
-find "$LOG_DIR" -type f -name 'backup_*.log' -mtime +30 -delete
 
 if [[ "$DEST_DEGRADED" == true ]]; then
     log "ERROR" "Backup Process Completed With Degraded Destinations."

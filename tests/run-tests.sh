@@ -63,6 +63,11 @@ assert_contains "錯誤訊息說明 retention 不可小於 interval" "不可小�
 OUT=$(bash "$SCRIPT" --local --traffic-interval 30 2>&1); RC=$?
 assert_eq       "retention-traffic(預設14) < traffic-interval 30 應 exit 1" 1 "$RC"
 
+# --- 缺值參數應乾淨報錯（而非 set -u 的 unbound variable） ---
+OUT=$(bash "$SCRIPT" --local --db-interval 2>&1); RC=$?
+assert_eq       "--db-interval 缺值應 exit 1"      1 "$RC"
+assert_contains "缺值錯誤訊息為自訂中文訊息"       "需要一個正整數" "$OUT"
+
 echo "-----------------------------------------"
 echo "PASS=${PASS} FAIL=${FAIL}"
 [[ "$FAIL" -eq 0 ]]
