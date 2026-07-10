@@ -566,23 +566,24 @@ FULL_DB_PATH="${WORK_DIR}/${DB_FILE}"
 # 頻率檢查
 DAYS_SINCE_DB=$(days_since_last_backup_enabled_destinations "ilo-db-bak-*.dump")
 if should_run_backup "Policy DB" "$DB_INTERVAL" "$DAYS_SINCE_DB"; then
-    if sudo -u ilo-pce illumio-pce-db-management dump --file "$FULL_DB_PATH" >> "$LOG_FILE" 2>&1; then
-        if [[ -f "$FULL_DB_PATH" ]]; then
-            log "INFO" "Policy DB 備份成功: $DB_FILE"
-            if process_file "$FULL_DB_PATH"; then
-                [[ "$ENABLE_LOCAL" == false ]] && rm -f "$FULL_DB_PATH"
-            else
-                HARD_FAILURE=true
-                if [[ "$ENABLE_LOCAL" == false ]]; then
-                    PRESERVE_WORK_DIR=true
-                    log "ERROR" "[DEST] 保留暫存檔供排查: $FULL_DB_PATH"
-                fi
-            fi
+    # 先寫入 .part 暫存名，成功後原子改名，避免：
+    # 1) 失敗殘留的半成品被下次頻率檢查誤判為有效備份
+    # 2) 同日重跑直接覆蓋既有備份
+    if sudo -u ilo-pce illumio-pce-db-management dump --file "${FULL_DB_PATH}.part" >> "$LOG_FILE" 2>&1 \
+       && [[ -f "${FULL_DB_PATH}.part" ]]; then
+        mv "${FULL_DB_PATH}.part" "$FULL_DB_PATH"
+        log "INFO" "Policy DB 備份成功: $DB_FILE"
+        if process_file "$FULL_DB_PATH"; then
+            [[ "$ENABLE_LOCAL" == false ]] && rm -f "$FULL_DB_PATH"
         else
             HARD_FAILURE=true
-            log "ERROR" "Policy DB 命令完成，但找不到輸出檔案: $FULL_DB_PATH"
+            if [[ "$ENABLE_LOCAL" == false ]]; then
+                PRESERVE_WORK_DIR=true
+                log "ERROR" "[DEST] 保留暫存檔供排查: $FULL_DB_PATH"
+            fi
         fi
     else
+        rm -f "${FULL_DB_PATH}.part"
         HARD_FAILURE=true
         log "ERROR" "Policy DB 備份命令失敗！"
     fi
@@ -595,23 +596,21 @@ FULL_TRAFFIC_PATH="${WORK_DIR}/${TRAFFIC_FILE}"
 
 DAYS_SINCE_TRAFFIC=$(days_since_last_backup_enabled_destinations "ilo-traffic-bak-*.tar.gz")
 if should_run_backup "Traffic DB" "$TRAFFIC_INTERVAL" "$DAYS_SINCE_TRAFFIC"; then
-    if sudo -u ilo-pce illumio-pce-db-management traffic dump --file "$FULL_TRAFFIC_PATH" >> "$LOG_FILE" 2>&1; then
-        if [[ -f "$FULL_TRAFFIC_PATH" ]]; then
-            log "INFO" "Traffic DB 備份成功: $TRAFFIC_FILE"
-            if process_file "$FULL_TRAFFIC_PATH"; then
-                [[ "$ENABLE_LOCAL" == false ]] && rm -f "$FULL_TRAFFIC_PATH"
-            else
-                HARD_FAILURE=true
-                if [[ "$ENABLE_LOCAL" == false ]]; then
-                    PRESERVE_WORK_DIR=true
-                    log "ERROR" "[DEST] 保留暫存檔供排查: $FULL_TRAFFIC_PATH"
-                fi
-            fi
+    if sudo -u ilo-pce illumio-pce-db-management traffic dump --file "${FULL_TRAFFIC_PATH}.part" >> "$LOG_FILE" 2>&1 \
+       && [[ -f "${FULL_TRAFFIC_PATH}.part" ]]; then
+        mv "${FULL_TRAFFIC_PATH}.part" "$FULL_TRAFFIC_PATH"
+        log "INFO" "Traffic DB 備份成功: $TRAFFIC_FILE"
+        if process_file "$FULL_TRAFFIC_PATH"; then
+            [[ "$ENABLE_LOCAL" == false ]] && rm -f "$FULL_TRAFFIC_PATH"
         else
             HARD_FAILURE=true
-            log "ERROR" "Traffic DB 命令完成，但找不到輸出檔案: $FULL_TRAFFIC_PATH"
+            if [[ "$ENABLE_LOCAL" == false ]]; then
+                PRESERVE_WORK_DIR=true
+                log "ERROR" "[DEST] 保留暫存檔供排查: $FULL_TRAFFIC_PATH"
+            fi
         fi
     else
+        rm -f "${FULL_TRAFFIC_PATH}.part"
         HARD_FAILURE=true
         log "ERROR" "Traffic DB 備份命令失敗！"
     fi
@@ -646,6 +645,8 @@ cleanup_dir() {
     find "$DIR" -maxdepth 1 -name 'ilo-db-bak-*.dump'        -mtime +"$RETENTION_DB_DAYS"      -delete
     find "$DIR" -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz' -mtime +"$RETENTION_TRAFFIC_DAYS"  -delete
     find "$DIR" -maxdepth 1 -name 'runtime_env_*.yml'         -mtime +"$RETENTION_DB_DAYS"      -delete
+    find "$DIR" -maxdepth 1 -name 'ilo-db-bak-*.dump.part'        -mtime +1 -delete
+    find "$DIR" -maxdepth 1 -name 'ilo-traffic-bak-*.tar.gz.part' -mtime +1 -delete
 }
 
 # 1. Local Cleanup
