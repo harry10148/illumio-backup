@@ -505,6 +505,10 @@ if [[ "$ENABLE_LOCAL" == true ]]; then
 else
     PRESERVE_WORK_DIR=false
     WORK_DIR=$(mktemp -d /tmp/illumio-backup-XXXXXX)
+    # mktemp 目錄預設 root:root 700；DB dump 由 ilo-pce 使用者寫入，必須調整擁有者
+    if ! chown ilo-pce:ilo-pce "$WORK_DIR" 2>/dev/null; then
+        die "無法將暫存目錄擁有者設為 ilo-pce: $WORK_DIR（DB dump 將無法寫入）"
+    fi
     log "INFO" "本地備份未啟用，使用暫存目錄: $WORK_DIR"
     # 腳本結束時清除暫存目錄
     trap '[[ "$PRESERVE_WORK_DIR" == true ]] || rm -rf "$WORK_DIR"' EXIT
