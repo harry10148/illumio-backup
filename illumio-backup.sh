@@ -255,6 +255,21 @@ check_remote_disk_space() {
 }
 
 # ------------------------------------------------------------------------------
+# calendar_days_since — 回傳指定 epoch 時間距今的「日曆天數」
+#   以午夜為界計算，避免 23.9 小時被整數除法算成 0 天，
+#   造成每日 cron 的備份實際隔日才執行 (off-by-one)
+#   +43200 (半天) 再除，吸收 DST 造成的 ±1 小時誤差
+#   $1: epoch 秒數
+# ------------------------------------------------------------------------------
+calendar_days_since() {
+    local EPOCH="$1"
+    local TODAY_MIDNIGHT LAST_MIDNIGHT
+    TODAY_MIDNIGHT=$(date -d "$(date +%F)" +%s)
+    LAST_MIDNIGHT=$(date -d "$(date -d "@${EPOCH}" +%F)" +%s)
+    echo $(( (TODAY_MIDNIGHT - LAST_MIDNIGHT + 43200) / 86400 ))
+}
+
+# ------------------------------------------------------------------------------
 # days_since_last_backup — 回傳指定目錄中最後一個符合 pattern 的檔案距今天數
 #   $1: 搜尋目錄
 #   $2: 檔案名稱 glob pattern
@@ -275,11 +290,10 @@ days_since_last_backup() {
         return
     fi
 
-    local LAST_MTIME NOW DIFF
+    local LAST_MTIME
     LAST_MTIME=$(stat -c %Y "$LAST_FILE" 2>/dev/null)
-    NOW=$(date +%s)
-    DIFF=$(( (NOW - LAST_MTIME) / 86400 ))
-    echo "$DIFF"
+    [[ "$LAST_MTIME" =~ ^[0-9]+$ ]] || { echo 9999; return; }
+    calendar_days_since "$LAST_MTIME"
 }
 
 remote_days_since_last_backup() {
@@ -298,10 +312,7 @@ remote_days_since_last_backup() {
     LAST_MTIME=${LAST_MTIME%.*}
     [[ "$LAST_MTIME" =~ ^[0-9]+$ ]] || { echo 9999; return; }
 
-    local NOW DIFF
-    NOW=$(date +%s)
-    DIFF=$(( (NOW - LAST_MTIME) / 86400 ))
-    echo "$DIFF"
+    calendar_days_since "$LAST_MTIME"
 }
 
 # 取「最久沒備份」的目的地距今天數；只要任何一個啟用目的地缺檔或過期，就應觸發備份，

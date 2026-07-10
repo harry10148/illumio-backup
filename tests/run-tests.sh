@@ -48,6 +48,14 @@ assert_exit "is_positive_int 拒絕 -1"      1 is_positive_int -1
 assert_exit "is_positive_int 拒絕 abc"     1 is_positive_int abc
 assert_exit "is_positive_int 拒絕空字串"   1 is_positive_int ""
 
+# --- calendar_days_since（日曆天計算，修正 off-by-one） ---
+NOW_EPOCH=$(date +%s)
+YESTERDAY_LATE=$(date -d "$(date -d yesterday +%F) 23:00" +%s)
+EIGHT_DAYS_AGO=$(date -d "$(date -d '8 days ago' +%F) 02:00" +%s)
+assert_eq "calendar_days_since 今天任何時刻為 0"          0 "$(calendar_days_since "$NOW_EPOCH")"
+assert_eq "calendar_days_since 昨天 23:00 為 1（跨日即 1 天）" 1 "$(calendar_days_since "$YESTERDAY_LATE")"
+assert_eq "calendar_days_since 8 天前為 8"                8 "$(calendar_days_since "$EIGHT_DAYS_AGO")"
+
 echo "-----------------------------------------"
 echo "PASS=${PASS} FAIL=${FAIL}"
 [[ "$FAIL" -eq 0 ]]
