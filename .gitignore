@@ -1,0 +1,2 @@
+# Claude Code 本機設定：「不要再問」會把指令（可能含明文憑證）寫進這裡，不得進版控
+.claude/settings.local.json
